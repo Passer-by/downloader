@@ -8,13 +8,16 @@ import 'package:dio/dio.dart';
 import 'package:dio_smart_retry/dio_smart_retry.dart';
 import 'package:flutter/foundation.dart';
 
-typedef DownLoadListener = Function(num taskId, DownloadState state, num totalSize, double progress, num speed);
+typedef DownLoadListener = Function(
+    num taskId, DownloadState state, num totalSize, double progress, num speed);
 
 class Downloader {
   static Map<num, Isolate> downloadPool = {};
   static List<DownLoadListener> listener = [];
 
   static String _rootPath = "";
+
+  static get rootPath => _rootPath;
 
   init(String rootPath) {
     if (_rootPath.endsWith('/')) {
@@ -24,14 +27,14 @@ class Downloader {
     }
   }
 
-  Future download(num taskId, List<String> urls,[totalSize = 0]) async {
+  Future download(num taskId, List<String> urls, [totalSize = 0]) async {
     if (downloadPool.containsKey(taskId)) {
       if (kDebugMode) {
         throw Exception('该任务已经添加');
       }
       return;
     }
-    final isolate = await _download(taskId, urls,totalSize, _rootPath);
+    final isolate = await _download(taskId, urls, totalSize, _rootPath);
     downloadPool[taskId] = isolate;
   }
 
@@ -40,11 +43,11 @@ class Downloader {
       downloadPool.remove(taskId)?.kill();
     }
     for (var element in listener) {
-      element.call(taskId,DownloadState.pause,0,0.0,0);
+      element.call(taskId, DownloadState.pause, 0, 0.0, 0);
     }
   }
 
-  Future remove(num taskId, List<String> urls, [bool clean = false]) async {
+  Future remove(num taskId, [bool clean = false]) async {
     if (downloadPool.containsKey(taskId)) {
       downloadPool.remove(taskId)?.kill();
     }
@@ -55,7 +58,7 @@ class Downloader {
       }
     }
     for (var element in listener) {
-      element.call(taskId,DownloadState.unknown,0,0.0,0);
+      element.call(taskId, DownloadState.unknown, 0, 0.0, 0);
     }
   }
 
@@ -63,27 +66,29 @@ class Downloader {
     return '$_rootPath$taskId';
   }
 
-  static onTaskRefresh(
-    num taskId,
-    DownloadState state,
-    num totalSize,
-    double progress,
-    num speed,
-  ) {
+  static onTaskRefresh(num taskId,
+      DownloadState state,
+      num totalSize,
+      double progress,
+      num speed,) {
     print(
-        'taskId:$taskId, state:$state, totalSize:${(totalSize / 1024).toDouble().toStringAsFixed(2)}kb, progress:$progress, speed:${(speed / 1024).toDouble().toStringAsFixed(2)}kb/s');
+        'taskId:$taskId, state:$state, totalSize:${(totalSize / 1024)
+            .toDouble()
+            .toStringAsFixed(2)}kb, progress:$progress, speed:${(speed / 1024)
+            .toDouble()
+            .toStringAsFixed(2)}kb/s');
     if (state == DownloadState.complete) {
       Downloader.downloadPool.remove(taskId)?.kill();
     }
     for (var element in Downloader.listener) {
-      element.call(taskId,state,totalSize,progress,speed);
+      element.call(taskId, state, totalSize, progress, speed);
     }
   }
 }
 
 // 返回参数 [taskId num,state DownloadState,totalSize num ,progress:double max 100,min 0,speed : num byte]
-Future<Isolate> _download(
-    num taskId, List<String> urls,num totalSize, String rootPath) async {
+Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
+    String rootPath) async {
   var receivePort = ReceivePort();
   receivePort.listen((message) {
     num taskId0 = message[0];
@@ -120,11 +125,16 @@ Future<Isolate> _download(
     List<String> downloadingUrl = [];
     port.send([taskId, downloadState.state, 0, 0.0, 0]);
 
+    void onFailed() {
+      port.send([taskId, DownloadState.failed, 0, 0.0, 0]);
+    }
+
     Future calculateTotalSize() async {
       /// 已经知道总的文件大小的话 跳过
-      if(totalSize!=0) return;
+      if (totalSize != 0) return;
       var calculateSize = 0;
-      final futures = urls.map((url) => dio.head(url).then((value) {
+      final futures = urls.map((url) =>
+          dio.head(url).then((value) {
             calculateSize++;
             debugPrint('计算的文件数 $calculateSize');
             if (value.headers['content-length']?.isNotEmpty == true) {
@@ -132,7 +142,7 @@ Future<Isolate> _download(
             } else {
               return 0;
             }
-          }));
+          }).catchError(onFailed));
       final responses = await Future.wait(futures);
       final sizes = responses.map((response) {
         return response;
@@ -152,14 +162,18 @@ Future<Isolate> _download(
         num diffReceived = 0;
         dio.downloadFile(url, saveFilePath(rootPath, taskId, url),
             onReceiveProgress: (int received, int total) {
-          downloadSize += received - diffReceived;
-          diffReceived = received;
-        }).then((value) {
+              downloadSize += received - diffReceived;
+              diffReceived = received;
+            }).then((value) {
+          if (!value) {
+            port.send([taskId, DownloadState.failed, 0, 0.0, 0]);
+          }
           downloadingUrl.remove(url);
           downloadNext();
         });
       }
     }
+
     /// 计算文件大小
     await calculateTotalSize();
 
@@ -180,7 +194,7 @@ Future<Isolate> _download(
         cacheSize = downloadSize;
       }
     });
-  }, [taskId, urls, rootPath,totalSize, receivePort.sendPort]);
+  }, [taskId, urls, rootPath, totalSize, receivePort.sendPort]);
 }
 
 // md5 加密
@@ -198,7 +212,7 @@ String saveFilePath(String rootPath, num taskId, String url) {
   String extension = _getFileExtension(url);
   final Uri uri = Uri.parse(url);
   String filePathMd5 =
-      _generateMD5(uri.replace(queryParameters: {}).toString());
+  _generateMD5(uri.replace(queryParameters: {}).toString());
   return '$rootPath$taskId/$filePathMd5.$extension';
 }
 
@@ -216,15 +230,15 @@ enum DownloadState {
 
   static DownloadState formValue(int state) {
     return DownloadState.values.firstWhere(
-      (element) => element.state == state,
+          (element) => element.state == state,
       orElse: () => DownloadState.unknown,
     );
   }
 }
 
-extension DioExtension on Dio{
-  Future<bool> downloadFile(
-      String url,String savePath, {Function(int received, int total)? onReceiveProgress}) async {
+extension DioExtension on Dio {
+  Future<bool> downloadFile(String url, String savePath,
+      {Function(int received, int total)? onReceiveProgress}) async {
     try {
       int received = 0;
       int total = 0;
@@ -233,8 +247,8 @@ extension DioExtension on Dio{
         received = await file.length();
         total = await _getTotalSize(url);
         print('Resuming download from ${received / 1024 / 1024}MB');
-        if(total<=received){
-          onReceiveProgress?.call(total,total);
+        if (total <= received) {
+          onReceiveProgress?.call(total, total);
           return true;
         }
       }
