@@ -27,14 +27,16 @@ class Downloader {
     }
   }
 
-  Future download(num taskId, List<String> urls, [totalSize = 0]) async {
+  Future download(num taskId, List<String> urls,
+      [totalSize = 0, needCalculate = false]) async {
     if (downloadPool.containsKey(taskId)) {
       if (kDebugMode) {
         throw Exception('该任务已经添加');
       }
       return;
     }
-    final isolate = await _download(taskId, urls, totalSize, _rootPath);
+    final isolate =
+        await _download(taskId, urls, totalSize, needCalculate, _rootPath);
     downloadPool[taskId] = isolate;
   }
 
@@ -66,17 +68,15 @@ class Downloader {
     return '$_rootPath$taskId';
   }
 
-  static onTaskRefresh(num taskId,
-      DownloadState state,
-      num totalSize,
-      double progress,
-      num speed,) {
+  static onTaskRefresh(
+    num taskId,
+    DownloadState state,
+    num totalSize,
+    double progress,
+    num speed,
+  ) {
     print(
-        'taskId:$taskId, state:$state, totalSize:${(totalSize / 1024)
-            .toDouble()
-            .toStringAsFixed(2)}kb, progress:$progress, speed:${(speed / 1024)
-            .toDouble()
-            .toStringAsFixed(2)}kb/s');
+        'taskId:$taskId, state:$state, totalSize:${(totalSize / 1024).toDouble().toStringAsFixed(2)}kb, progress:$progress, speed:${(speed / 1024).toDouble().toStringAsFixed(2)}kb/s');
     if (state == DownloadState.complete) {
       Downloader.downloadPool.remove(taskId)?.kill();
     }
@@ -88,7 +88,7 @@ class Downloader {
 
 // 返回参数 [taskId num,state DownloadState,totalSize num ,progress:double max 100,min 0,speed : num byte]
 Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
-    String rootPath) async {
+    bool needCalculate, String rootPath) async {
   var receivePort = ReceivePort();
   receivePort.listen((message) {
     num taskId0 = message[0];
@@ -104,7 +104,12 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
     final List<String> urls = message[1] as List<String>;
     final rootPath = message[2] as String;
     num totalSize = message[3] as num;
-    final SendPort port = message[4] as SendPort;
+    final needCalculate = (message[4] as bool && totalSize == 1);
+    final SendPort port = message[5] as SendPort;
+
+    num totalFileCount = urls.length;
+    num completeFileCount = 0;
+
     final dio = Dio(BaseOptions());
     dio.interceptors.add(RetryInterceptor(
       dio: dio,
@@ -129,12 +134,18 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
       port.send([taskId, DownloadState.failed, 0, 0.0, 0]);
     }
 
+    double getProgress() {
+      if (needCalculate || totalFileCount == 1) {
+        return (downloadSize / totalSize) * 100;
+      }
+      return (completeFileCount / totalFileCount) * 100;
+    }
+
     Future calculateTotalSize() async {
       /// 已经知道总的文件大小的话 跳过
       if (totalSize != 0) return;
       var calculateSize = 0;
-      final futures = urls.map((url) =>
-          dio.head(url).then((value) {
+      final futures = urls.map((url) => dio.head(url).then((value) {
             calculateSize++;
             debugPrint('计算的文件数 $calculateSize');
             if (value.headers['content-length']?.isNotEmpty == true) {
@@ -142,7 +153,7 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
             } else {
               return 0;
             }
-          }).catchError(onFailed));
+          }));
       final responses = await Future.wait(futures);
       final sizes = responses.map((response) {
         return response;
@@ -162,12 +173,17 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
         num diffReceived = 0;
         dio.downloadFile(url, saveFilePath(rootPath, taskId, url),
             onReceiveProgress: (int received, int total) {
-              downloadSize += received - diffReceived;
-              diffReceived = received;
-            }).then((value) {
+          if (!needCalculate && totalFileCount == 1) {
+            totalSize = total;
+          }
+          downloadSize += received - diffReceived;
+          diffReceived = received;
+        }).then((value) {
           if (!value) {
             port.send([taskId, DownloadState.failed, 0, 0.0, 0]);
+            return;
           }
+          completeFileCount++;
           downloadingUrl.remove(url);
           downloadNext();
         });
@@ -175,26 +191,33 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
     }
 
     /// 计算文件大小
-    await calculateTotalSize();
+    if (needCalculate && totalSize == 0) {
+      try {
+        await calculateTotalSize();
+      } catch (e) {
+        print(e);
+        onFailed();
+      }
+    }
 
     for (int index = 0; index < 20; index++) {
       if (urls.isEmpty) break;
       downloadNext();
     }
     Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (totalSize != 0) {
+      if (totalSize != 0 || !needCalculate) {
         downloadState = DownloadState.download;
         port.send([
           taskId,
           downloadState.state,
           totalSize,
-          (downloadSize / totalSize) * 100,
+          getProgress(),
           downloadSize - cacheSize
         ]);
         cacheSize = downloadSize;
       }
     });
-  }, [taskId, urls, rootPath, totalSize, receivePort.sendPort]);
+  }, [taskId, urls, rootPath, totalSize, needCalculate, receivePort.sendPort]);
 }
 
 // md5 加密
@@ -212,7 +235,7 @@ String saveFilePath(String rootPath, num taskId, String url) {
   String extension = _getFileExtension(url);
   final Uri uri = Uri.parse(url);
   String filePathMd5 =
-  _generateMD5(uri.replace(queryParameters: {}).toString());
+      _generateMD5(uri.replace(queryParameters: {}).toString());
   return '$rootPath$taskId/$filePathMd5.$extension';
 }
 
@@ -230,7 +253,7 @@ enum DownloadState {
 
   static DownloadState formValue(int state) {
     return DownloadState.values.firstWhere(
-          (element) => element.state == state,
+      (element) => element.state == state,
       orElse: () => DownloadState.unknown,
     );
   }
