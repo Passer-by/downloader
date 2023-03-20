@@ -110,7 +110,9 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
     num totalFileCount = urls.length;
     num completeFileCount = 0;
 
-    final dio = Dio(BaseOptions());
+    final dio = Dio(BaseOptions(
+      connectTimeout: Duration(seconds: 5)
+    ));
     dio.interceptors.add(RetryInterceptor(
       dio: dio,
       logPrint: print, // specify log function (optional)
