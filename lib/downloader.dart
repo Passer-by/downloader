@@ -131,7 +131,7 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
     port.send([taskId, downloadState.state, 0, 0.0, 0]);
 
     void onFailed() {
-      port.send([taskId, DownloadState.failed, 0, 0.0, 0]);
+      port.send([taskId, DownloadState.failed.state, 0, 0.0, 0]);
     }
 
     double getProgress() {
@@ -180,7 +180,7 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
           diffReceived = received;
         }).then((value) {
           if (!value) {
-            port.send([taskId, DownloadState.failed, 0, 0.0, 0]);
+            port.send([taskId, DownloadState.failed.state, 0, 0.0, 0]);
             return;
           }
           completeFileCount++;
