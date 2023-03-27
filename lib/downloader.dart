@@ -56,7 +56,7 @@ class Downloader {
     if (clean) {
       Directory directory = Directory(getTaskPath(taskId));
       if (await directory.exists()) {
-        await directory.delete();
+        await directory.delete(recursive: true);
       }
     }
     for (var element in listener) {
@@ -231,7 +231,8 @@ String _generateMD5(String data) {
 }
 
 String _getFileExtension(String url) {
-  return url.substring(url.lastIndexOf('.') + 1);
+  final uri  =Uri.parse(url).path;
+  return uri.substring(uri.lastIndexOf('.') + 1);
 }
 
 String saveFilePath(String rootPath, num taskId, String url) {
