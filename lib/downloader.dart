@@ -116,14 +116,19 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
     dio.interceptors.add(RetryInterceptor(
       dio: dio,
       logPrint: print, // specify log function (optional)
-      retries: 5, // retry count (optional)
+      retries: 10, // retry count (optional)
       retryDelays: const [
         // set delays between retries (optional)
-        Duration(seconds: 1), // wait 1 sec before first retry
-        Duration(seconds: 1), // wait 2 sec before second retry
-        Duration(seconds: 1), // wait 3 sec before third retry
-        Duration(seconds: 1), // wait 3 sec before third retry
-        Duration(seconds: 1), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 1 sec before first retry
+        Duration(seconds: 3), // wait 2 sec before second retry
+        Duration(seconds: 3), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 3 sec before third retry
+        Duration(seconds: 3), // wait 3 sec before third retry
       ],
     ));
     DownloadState downloadState = DownloadState.pre;
