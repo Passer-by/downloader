@@ -36,7 +36,7 @@ class Downloader {
       return;
     }
     final isolate =
-    await _download(taskId, urls, totalSize, needCalculate, _rootPath);
+        await _download(taskId, urls, totalSize, needCalculate, _rootPath);
     downloadPool[taskId] = isolate;
   }
 
@@ -68,17 +68,15 @@ class Downloader {
     return '$_rootPath$taskId';
   }
 
-  static onTaskRefresh(num taskId,
-      DownloadState state,
-      num totalSize,
-      double progress,
-      num speed,) {
+  static onTaskRefresh(
+    num taskId,
+    DownloadState state,
+    num totalSize,
+    double progress,
+    num speed,
+  ) {
     print(
-        'taskId:$taskId, state:$state, totalSize:${(totalSize / 1024)
-            .toDouble()
-            .toStringAsFixed(2)}kb, progress:$progress, speed:${(speed / 1024)
-            .toDouble()
-            .toStringAsFixed(2)}kb/s');
+        'taskId:$taskId, state:$state, totalSize:${(totalSize / 1024).toDouble().toStringAsFixed(2)}kb, progress:$progress, speed:${(speed / 1024).toDouble().toStringAsFixed(2)}kb/s');
     if (state == DownloadState.complete || state == DownloadState.failed) {
       Downloader.downloadPool.remove(taskId)?.kill();
     }
@@ -115,8 +113,11 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
     final dio = Dio(BaseOptions());
     dio.interceptors.add(RetryInterceptor(
       dio: dio,
-      logPrint: print, // specify log function (optional)
-      retries: 10, // retry count (optional)
+      logPrint: print,
+      // specify log function (optional)
+      retries: 10,
+      // retry count (optional)
+      retryableExtraStatuses: {404, 401},
       retryDelays: const [
         // set delays between retries (optional)
         Duration(seconds: 3), // wait 1 sec before first retry
@@ -152,8 +153,7 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
       /// 已经知道总的文件大小的话 跳过
       if (totalSize != 0) return;
       var calculateSize = 0;
-      final futures = urls.map((url) =>
-          dio.head(url).then((value) {
+      final futures = urls.map((url) => dio.head(url).then((value) {
             calculateSize++;
             debugPrint('计算的文件数 $calculateSize');
             if (value.headers['content-length']?.isNotEmpty == true) {
@@ -181,14 +181,14 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
         num diffReceived = 0;
         dio.downloadFile(url, saveFilePath(rootPath, taskId, url),
             onReceiveProgress: (int received, int total) {
-              if (!needCalculate && totalFileCount == 1) {
-                totalSize = total;
-              }
-              downloadSize += received - diffReceived;
-              diffReceived = received;
-            }).then((value) {
+          if (!needCalculate && totalFileCount == 1) {
+            totalSize = total;
+          }
+          downloadSize += received - diffReceived;
+          diffReceived = received;
+        }).then((value) {
           if (!value) {
-            port.send([taskId, DownloadState.failed.state, 0, 0.0, 0]);
+            onFailed();
             return;
           }
           completeFileCount++;
@@ -236,7 +236,7 @@ String _generateMD5(String data) {
 }
 
 String _getFileExtension(String url) {
-  final uri  =Uri.parse(url).path;
+  final uri = Uri.parse(url).path;
   return uri.substring(uri.lastIndexOf('.') + 1);
 }
 
@@ -244,7 +244,7 @@ String saveFilePath(String rootPath, num taskId, String url) {
   String extension = _getFileExtension(url);
   final Uri uri = Uri.parse(url);
   String filePathMd5 =
-  _generateMD5(uri.replace(queryParameters: {}).toString());
+      _generateMD5(uri.replace(queryParameters: {}).toString());
   return '$rootPath$taskId/$filePathMd5.$extension';
 }
 
@@ -262,7 +262,7 @@ enum DownloadState {
 
   static DownloadState formValue(int state) {
     return DownloadState.values.firstWhere(
-          (element) => element.state == state,
+      (element) => element.state == state,
       orElse: () => DownloadState.unknown,
     );
   }
@@ -285,7 +285,11 @@ extension DioExtension on Dio {
         }
       }
 
-      var options = Options(headers: {'range': 'bytes=$received-'});
+      var options = Options(headers: {
+        'range': 'bytes=$received-',
+        'Connection': 'Keep-Alive',
+        'Keep-Alive': 'max=100000,timeout=30'
+      });
       await download(url, savePath,
           onReceiveProgress: onReceiveProgress, options: options);
 
