@@ -187,10 +187,10 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
           downloadSize += received - diffReceived;
           diffReceived = received;
         }).then((value) {
-          if (!value) {
-            onFailed();
-            return;
-          }
+          // if (!value) {
+          //   onFailed();
+          //   return;
+          // }
           completeFileCount++;
           downloadingUrl.remove(url);
           downloadNext();
