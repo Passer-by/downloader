@@ -111,6 +111,24 @@ Future<Isolate> _download(num taskId, List<String> urls, num totalSize,
     num completeFileCount = 0;
 
     final dio = Dio(BaseOptions());
+    dio.interceptors.add(InterceptorsWrapper(
+      // 在响应返回之后，做一些处理
+      onResponse: (response, handler) {
+        // 如果状态码为302 301，则进行重定向
+        if (response.statusCode == HttpStatus.found ||
+            response.statusCode == HttpStatus.movedPermanently) {
+          final location = response.headers.value('location');
+          if (location != null) {
+            dio.downloadFile(
+                location, response.requestOptions.extra['savePath']);
+          } else {
+            handler.next(response);
+          }
+        } else {
+          handler.next(response);
+        }
+      },
+    ));
     dio.interceptors.add(RetryInterceptor(
       dio: dio,
       logPrint: print,
@@ -289,6 +307,8 @@ extension DioExtension on Dio {
         'range': 'bytes=$received-',
         'Connection': 'Keep-Alive',
         'Keep-Alive': 'max=100000,timeout=30'
+      }, extra: {
+        'savePath': savePath
       });
       await download(url, savePath,
           onReceiveProgress: onReceiveProgress, options: options);
